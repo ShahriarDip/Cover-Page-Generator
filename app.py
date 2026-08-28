@@ -179,7 +179,7 @@ def generate_pdf():
         current_y -= 25
         c.setFont("Times-Roman", 14)
         if doc_type_text == "Lab Report":
-            label_str = f"Part of Exp : {exp_num}"
+            label_str = f"Exp No : {exp_num}"
         elif doc_type_text == "Assignment":
             label_str = f"Assignment No : {exp_num}"
         elif doc_type_text == "Project Report":
