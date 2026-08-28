@@ -2,3 +2,4 @@ streamlit
 reportlab
 pypdfium2
 Pillow
+python-docx
