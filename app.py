@@ -1,5 +1,6 @@
 import io
 import os
+import zipfile
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches, Pt
@@ -468,6 +469,138 @@ def generate_docx():
     return buffer
 
 
+# -----------------------------------------------------------------------------
+# 5. LATEX GENERATION & ZIP BUNDLING LOGIC
+# -----------------------------------------------------------------------------
+def generate_tex():
+    data = st.session_state.form_data
+
+    # Resolve document type
+    doc_type = data.get("doc_type_choice", "Lab Report")
+    if doc_type == "Others":
+        doc_type = data.get("custom_doc_type", "Cover Page")
+
+    exp_num = data.get("exp_no", "").strip()
+    if exp_num:
+        if doc_type == "Lab Report":
+            num_str = f"Part of Exp : {exp_num}"
+        elif doc_type == "Assignment":
+            num_str = f"Assignment No : {exp_num}"
+        elif doc_type == "Project Report":
+            num_str = f"Project No : {exp_num}"
+        elif doc_type == "Project Proposal":
+            num_str = f"Proposal No : {exp_num}"
+        else:
+            num_str = f"No : {exp_num}"
+    else:
+        num_str = ""
+
+    # Build student block
+    student_block = ""
+    if data.get("work_type") == "Individual":
+        if data.get("student_name"):
+            student_block += f"{data['student_name']}\\\\\n"
+        if data.get("reg_no"):
+            student_block += f"Registration No: {data['reg_no']}\\\\\n"
+    else:
+        for i in range(int(data.get("num_students", 2))):
+            s_name = data.get(f"sname_{i}", "")
+            s_reg = data.get(f"sreg_{i}", "")
+            if s_name:
+                info = f"{s_name} (Reg: {s_reg})" if s_reg else s_name
+                student_block += f"{info}\\\\\n"
+        if data.get("group_no"):
+            student_block += f"Group No : {data['group_no']}\\\\\n"
+
+    # Build teacher department string
+    if data.get("is_external_teacher"):
+        dept_val = data.get("department", "Electrical and Electronic Engineering")
+        if dept_val == "Others":
+            dept_val = data.get("custom_dept", "Department")
+        dept_str = (
+            f"Department of {dept_val}"
+            if not dept_val.lower().startswith("department")
+            else dept_val
+        )
+    else:
+        dept_str = "Department of Electrical \\& Electronic Engineering"
+
+    sub_date = data.get("sub_date", "").strip()
+    date_str = (
+        f"Date of Submission: {sub_date}"
+        if sub_date
+        else "Date of Submission: \\dots\\dots\\dots\\dots\\dots\\dots\\dots\\dots"
+    )
+
+    # Template
+    tex_code = f"""\\documentclass[12pt,a4paper]{{article}}
+\\usepackage[margin=1in]{{geometry}}
+\\usepackage{{graphicx}}
+\\usepackage{{setspace}}
+\\pagestyle{{empty}}
+
+\\begin{{document}}
+\\begin{{center}}
+
+{{\\Huge \\textbf{{{doc_type.upper()}}}}} \\\\[1.5em]
+\\hrule height 1pt
+\\vspace{{1em}}
+
+\\Large {num_str} \\\\[0.8em]
+{{\\Large \\textbf{{{data.get("title", "")}}}}} \\\\[1em]
+
+\\hrule height 1pt
+\\vspace{{2em}}
+
+\\IfFileExists{{logo_eee.png}}{{
+    \\includegraphics[width=1.2in]{{logo_eee.png}} \\\\[1.5em]
+}}{{
+    \\vspace{{1.2in}}
+}}
+
+{{\\large \\textbf{{Department of Electrical and Electronic Engineering}}}} \\\\[0.8em]
+Course Title: {data.get("course_title", "")} \\\\[0.5em]
+Course Code: {data.get("course_code", "")} \\\\[2em]
+
+{{\\large \\underline{{\\textbf{{Submitted By:}}}}}} \\\\[0.8em]
+{student_block}
+\\vspace{{1.5em}}
+
+{{\\large \\underline{{\\textbf{{Submitted To:}}}}}} \\\\[0.8em]
+{data.get("teacher_name", "")} \\\\[0.4em]
+{data.get("designation", "")} \\\\[0.4em]
+{dept_str} \\\\[0.4em]
+Shahjalal University of Science and Technology, Sylhet \\\\[3em]
+
+\\vfill
+{date_str}
+
+\\end{{center}}
+\\end{{document}}
+"""
+    return tex_code
+
+
+def generate_tex_zip(tex_code):
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # Add the generated .tex file
+        zip_file.writestr("Cover_Page.tex", tex_code)
+
+        # Include the EEE logo if available
+        eee_path = (
+            "logo_eee.png"
+            if os.path.exists("logo_eee.png")
+            else "eee-sust-logo-png_seeklogo-535291.png"
+        )
+        if os.path.exists(eee_path):
+            zip_file.write(eee_path, arcname="logo_eee.png")
+
+    zip_buffer.seek(0)
+    return zip_buffer
+
+
 def get_pdf_preview(pdf_bytes):
     pdf = pdfium.PdfDocument(pdf_bytes)
     page = pdf[0]
@@ -476,7 +609,7 @@ def get_pdf_preview(pdf_bytes):
 
 
 # -----------------------------------------------------------------------------
-# 5. STREAMLIT UI LAYOUT
+# 6. STREAMLIT UI LAYOUT
 # -----------------------------------------------------------------------------
 if st.session_state.step == "form":
     eee_path = (
@@ -763,19 +896,23 @@ elif st.session_state.step == "preview":
     docx_buffer = generate_docx()
     docx_bytes = docx_buffer.getvalue()
 
+    tex_code = generate_tex()
+    tex_zip_buffer = generate_tex_zip(tex_code)
+    tex_zip_bytes = tex_zip_buffer.getvalue()
+
     preview_img = get_pdf_preview(pdf_bytes)
     st.image(preview_img, use_container_width=True)
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1, 1, 1, 1.2])
 
-    with col1:
+    with btn_col1:
         if st.button("✏️ Edit Details", use_container_width=True):
             st.session_state.step = "form"
             st.rerun()
 
-    with col2:
+    with btn_col2:
         st.download_button(
-            label="📥 Download PDF",
+            label="📥 PDF",
             data=pdf_bytes,
             file_name="Cover_Page.pdf",
             mime="application/pdf",
@@ -783,11 +920,20 @@ elif st.session_state.step == "preview":
             use_container_width=True,
         )
 
-    with col3:
+    with btn_col3:
         st.download_button(
-            label="📝 Download DOCX",
+            label="📝 DOCX",
             data=docx_bytes,
             file_name="Cover_Page.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+        )
+
+    with btn_col4:
+        st.download_button(
+            label="📦 LaTeX Bundle (.zip)",
+            data=tex_zip_bytes,
+            file_name="LaTeX_Cover_Page.zip",
+            mime="application/zip",
             use_container_width=True,
         )
