@@ -1,11 +1,14 @@
 import io
 import os
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt
 import pypdfium2 as pdfium
-import streamlit as st
 from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+import streamlit as st
 
 # Configure Streamlit page layout
 st.set_page_config(
@@ -133,7 +136,7 @@ def prepare_image(image_path):
 @st.dialog("⚠️ Missing Information Warning")
 def show_missing_fields_warning(missing_fields):
     st.write(
-        "The following fields are currently **blank**. If you proceed, they will remain empty on the generated PDF so you can write them in by hand."
+        "The following fields are currently **blank**. If you proceed, they will remain empty on the generated documents so you can write them in by hand."
     )
     for field in missing_fields:
         st.markdown(f"- **{field}**")
@@ -179,7 +182,7 @@ def generate_pdf():
         current_y -= 25
         c.setFont("Times-Roman", 14)
         if doc_type_text == "Lab Report":
-            label_str = f"Exp No : {exp_num}"
+            label_str = f"Part of Exp : {exp_num}"
         elif doc_type_text == "Assignment":
             label_str = f"Assignment No : {exp_num}"
         elif doc_type_text == "Project Report":
@@ -313,7 +316,7 @@ def generate_pdf():
         "Shahjalal University of Science and Technology, Sylhet",
     )
 
-    # --- 9. Date of Submission (Fillable Blank Line Fallback) ---
+    # --- 9. Date of Submission ---
     sub_date = data.get("sub_date", "").strip()
     c.setFont("Times-Roman", 12)
     if sub_date:
@@ -327,6 +330,144 @@ def generate_pdf():
     return buffer
 
 
+# -----------------------------------------------------------------------------
+# 4. DOCX GENERATION LOGIC (NATIVE MS WORD)
+# -----------------------------------------------------------------------------
+def generate_docx():
+    data = st.session_state.form_data
+    doc = Document()
+
+    # Set page margins to 1 inch
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1)
+        section.right_margin = Inches(1)
+
+    def add_centered_p(text="", bold=False, size=12, space_after=6, underline=False):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(space_after)
+        if text:
+            run = p.add_run(text)
+            run.bold = bold
+            run.underline = underline
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(size)
+        return p
+
+    # --- 1. Document Type Header ---
+    doc_type_text = data.get("doc_type_choice", "Lab Report")
+    if doc_type_text == "Others":
+        doc_type_text = data.get("custom_doc_type", "Cover Page")
+
+    add_centered_p(doc_type_text.upper(), bold=True, size=22, space_after=12)
+
+    # --- 2. Exp / Assignment / Proposal Number & Title ---
+    exp_num = data.get("exp_no", "").strip()
+    if exp_num:
+        if doc_type_text == "Lab Report":
+            label_str = f"Part of Exp : {exp_num}"
+        elif doc_type_text == "Assignment":
+            label_str = f"Assignment No : {exp_num}"
+        elif doc_type_text == "Project Report":
+            label_str = f"Project No : {exp_num}"
+        elif doc_type_text == "Project Proposal":
+            label_str = f"Proposal No : {exp_num}"
+        else:
+            label_str = f"No : {exp_num}"
+
+        add_centered_p(label_str, size=14, space_after=6)
+
+    if data.get("title"):
+        add_centered_p(data["title"], bold=True, size=16, space_after=18)
+
+    # --- 3. Logo ---
+    eee_path = (
+        "logo_eee.png"
+        if os.path.exists("logo_eee.png")
+        else "eee-sust-logo-png_seeklogo-535291.png"
+    )
+    if os.path.exists(eee_path):
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_before = Pt(12)
+        p_img.paragraph_format.space_after = Pt(18)
+        p_img.add_run().add_picture(eee_path, width=Inches(1.2))
+
+    # --- 4. Department Name & Course Info ---
+    add_centered_p(
+        "Department of Electrical and Electronic Engineering",
+        bold=True,
+        size=15,
+        space_after=12,
+    )
+
+    if data.get("course_title"):
+        add_centered_p(f"Course Title: {data['course_title']}", size=13, space_after=4)
+
+    if data.get("course_code"):
+        add_centered_p(f"Course Code: {data['course_code']}", size=13, space_after=24)
+
+    # --- 5. Submitted By Section ---
+    add_centered_p("Submitted By:", bold=True, size=13, space_after=6, underline=True)
+
+    if data.get("work_type") == "Individual":
+        if data.get("student_name"):
+            add_centered_p(data["student_name"], size=12, space_after=4)
+        if data.get("reg_no"):
+            add_centered_p(f"Registration No: {data['reg_no']}", size=12, space_after=20)
+    else:
+        for i in range(int(data.get("num_students", 2))):
+            s_name = data.get(f"sname_{i}", "")
+            s_reg = data.get(f"sreg_{i}", "")
+            if s_name:
+                info = f"{s_name} (Reg: {s_reg})" if s_reg else s_name
+                add_centered_p(info, size=12, space_after=4)
+
+        if data.get("group_no"):
+            add_centered_p(f"Group No : {data['group_no']}", size=12, space_after=20)
+
+    # --- 6. Submitted To Section ---
+    add_centered_p("Submitted To:", bold=True, size=13, space_after=6, underline=True)
+
+    if data.get("teacher_name"):
+        add_centered_p(data["teacher_name"], size=12, space_after=4)
+    if data.get("designation"):
+        add_centered_p(data["designation"], size=12, space_after=4)
+
+    # Resolve Department
+    if data.get("is_external_teacher"):
+        dept_val = data.get("department", "Electrical and Electronic Engineering")
+        if dept_val == "Others":
+            dept_val = data.get("custom_dept", "Department")
+        dept_str = f"Department of {dept_val}" if not dept_val.lower().startswith("department") else dept_val
+    else:
+        dept_str = "Department of Electrical & Electronic Engineering"
+
+    add_centered_p(dept_str, size=12, space_after=4)
+    add_centered_p(
+        "Shahjalal University of Science and Technology, Sylhet",
+        size=12,
+        space_after=30,
+    )
+
+    # --- 7. Date of Submission ---
+    sub_date = data.get("sub_date", "").strip()
+    date_text = (
+        f"Date of Submission: {sub_date}"
+        if sub_date
+        else "Date of Submission: ...................................."
+    )
+    add_centered_p(date_text, size=12, space_after=0)
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
 def get_pdf_preview(pdf_bytes):
     pdf = pdfium.PdfDocument(pdf_bytes)
     page = pdf[0]
@@ -335,7 +476,7 @@ def get_pdf_preview(pdf_bytes):
 
 
 # -----------------------------------------------------------------------------
-# 4. STREAMLIT UI LAYOUT
+# 5. STREAMLIT UI LAYOUT
 # -----------------------------------------------------------------------------
 if st.session_state.step == "form":
     eee_path = (
@@ -619,10 +760,13 @@ elif st.session_state.step == "preview":
     pdf_buffer = generate_pdf()
     pdf_bytes = pdf_buffer.getvalue()
 
+    docx_buffer = generate_docx()
+    docx_bytes = docx_buffer.getvalue()
+
     preview_img = get_pdf_preview(pdf_bytes)
     st.image(preview_img, use_container_width=True)
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
         if st.button("✏️ Edit Details", use_container_width=True):
@@ -636,5 +780,14 @@ elif st.session_state.step == "preview":
             file_name="Cover_Page.pdf",
             mime="application/pdf",
             type="primary",
+            use_container_width=True,
+        )
+
+    with col3:
+        st.download_button(
+            label="📝 Download DOCX",
+            data=docx_bytes,
+            file_name="Cover_Page.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True,
         )
