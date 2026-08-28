@@ -20,7 +20,33 @@ st.set_page_config(
 # 0. CONSTANTS & INSTITUTION LISTS
 # -----------------------------------------------------------------------------
 BANGLADESH_UNIVERSITIES = [
-    # --- Public Universities ---
+    # --- Top World Reputed Universities ---
+    "Harvard University",
+    "Massachusetts Institute of Technology (MIT)",
+    "Stanford University",
+    "University of Cambridge",
+    "University of Oxford",
+    "Imperial College London",
+    "ETH Zurich",
+    "California Institute of Technology (Caltech)",
+    "National University of Singapore (NUS)",
+    "University College London (UCL)",
+    "Nanyang Technological University (NTU)",
+    "Princeton University",
+    "Yale University",
+    "Cornell University",
+    "Columbia University",
+    "University of California, Berkeley (UCB)",
+    "University of Chicago",
+    "Tsinghua University",
+    "Peking University",
+    "University of Toronto",
+    "The University of Melbourne",
+    "The University of Sydney",
+    "The University of Tokyo",
+    "Seoul National University",
+
+    # --- Public Universities (Bangladesh) ---
     "University of Dhaka (DU)",
     "Bangladesh University of Engineering & Technology (BUET)",
     "University of Chittagong (CU)",
@@ -67,7 +93,7 @@ BANGLADESH_UNIVERSITIES = [
     "Kurigram Agricultural University",
     "Sunamganj Science & Technology University",
 
-    # --- Reputed Private Universities ---
+    # --- Reputed Private Universities (Bangladesh) ---
     "North South University (NSU)",
     "BRAC University (BRACU)",
     "Ahsanullah University of Science & Technology (AUST)",
@@ -101,9 +127,7 @@ BANGLADESH_UNIVERSITIES = [
     "Varendra University",
     "Bangladesh Army University of Science & Technology (BAUST)",
     "Bangladesh Army University of Engineering & Technology (BAUET)",
-
-    # --- Custom Manual Option ---
-    "Others (Type Manually)",
+    "Others",
 ]
 
 DESIGNATION_OPTIONS = [
@@ -141,9 +165,8 @@ if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
 DEFAULT_DATA = {
-    "institution_select": "University of Dhaka (DU)",
-    "institution_name": "University of Dhaka (DU)",
-    "custom_institution": "",
+    "institution_name": "",
+    "custom_inst_name": "",
     "doc_type_choice": "Lab Report",
     "custom_doc_type": "",
     "work_type": "Individual",
@@ -182,6 +205,13 @@ def prepare_image(image_bytes):
         return ImageReader(img)
     except Exception:
         return None
+
+
+def get_final_institution_name(data):
+    inst = data.get("institution_name", "")
+    if inst == "Others":
+        return data.get("custom_inst_name", "").strip()
+    return inst
 
 
 # -----------------------------------------------------------------------------
@@ -278,7 +308,11 @@ def generate_pdf():
     dept_val = data.get("department", "")
     if dept_val == "Others":
         dept_val = data.get("custom_dept", "")
-    dept_str = f"Department of {dept_val}" if dept_val and not dept_val.lower().startswith("department") else dept_val
+    dept_str = (
+        f"Department of {dept_val}"
+        if dept_val and not dept_val.lower().startswith("department")
+        else dept_val
+    )
 
     if dept_str:
         c.setFont("Times-Bold", 15)
@@ -349,8 +383,9 @@ def generate_pdf():
         c.drawCentredString(width / 2, current_y, dept_str)
         current_y -= 20
 
-    if data.get("institution_name"):
-        c.drawCentredString(width / 2, current_y, data["institution_name"])
+    inst_name = get_final_institution_name(data)
+    if inst_name:
+        c.drawCentredString(width / 2, current_y, inst_name)
 
     # --- 9. Date of Submission ---
     sub_date = data.get("sub_date", "").strip()
@@ -431,7 +466,11 @@ def generate_docx():
     dept_val = data.get("department", "")
     if dept_val == "Others":
         dept_val = data.get("custom_dept", "")
-    dept_str = f"Department of {dept_val}" if dept_val and not dept_val.lower().startswith("department") else dept_val
+    dept_str = (
+        f"Department of {dept_val}"
+        if dept_val and not dept_val.lower().startswith("department")
+        else dept_val
+    )
 
     if dept_str:
         add_centered_p(dept_str, bold=True, size=15, space_after=12)
@@ -476,8 +515,9 @@ def generate_docx():
     if dept_str:
         add_centered_p(dept_str, size=12, space_after=4)
 
-    if data.get("institution_name"):
-        add_centered_p(data["institution_name"], size=12, space_after=30)
+    inst_name = get_final_institution_name(data)
+    if inst_name:
+        add_centered_p(inst_name, size=12, space_after=30)
 
     # --- 7. Date of Submission ---
     sub_date = data.get("sub_date", "").strip()
@@ -542,11 +582,15 @@ def generate_tex():
     dept_val = data.get("department", "")
     if dept_val == "Others":
         dept_val = data.get("custom_dept", "")
-    dept_str = f"Department of {dept_val}" if dept_val and not dept_val.lower().startswith("department") else dept_val
+    dept_str = (
+        f"Department of {dept_val}"
+        if dept_val and not dept_val.lower().startswith("department")
+        else dept_val
+    )
 
     # Escape LaTeX special character &
     dept_str_tex = dept_str.replace("&", "\\&")
-    inst_name_tex = data.get("institution_name", "").replace("&", "\\&")
+    inst_name_tex = get_final_institution_name(data).replace("&", "\\&")
 
     sub_date = data.get("sub_date", "").strip()
     date_str = (
@@ -643,32 +687,33 @@ if st.session_state.step == "form":
     # Institution Name & Optional Logo Uploader
     st.subheader("Institution Information")
 
-    # University Selection / Searchable Dropdown
-    curr_inst_sel = d.get("institution_select", BANGLADESH_UNIVERSITIES[0])
+    curr_inst = d.get("institution_name", "")
     inst_idx = (
-        BANGLADESH_UNIVERSITIES.index(curr_inst_sel)
-        if curr_inst_sel in BANGLADESH_UNIVERSITIES
-        else (len(BANGLADESH_UNIVERSITIES) - 1)
+        BANGLADESH_UNIVERSITIES.index(curr_inst)
+        if curr_inst in BANGLADESH_UNIVERSITIES
+        else 0
     )
 
     selected_inst = st.selectbox(
-        "Select Institution Name *",
-        BANGLADESH_UNIVERSITIES,
-        index=inst_idx,
+        "Institution Name *",
+        options=["Select a University..."] + BANGLADESH_UNIVERSITIES,
+        index=inst_idx + 1 if curr_inst in BANGLADESH_UNIVERSITIES else 0,
         key=f"inst_select_{v}",
+        help="Select your university from the list or choose 'Others' to type a custom name.",
     )
-    d["institution_select"] = selected_inst
 
-    if selected_inst == "Others (Type Manually)":
-        d["custom_institution"] = st.text_input(
-            "Specify Institution Name *",
-            value=d.get("custom_institution", ""),
-            placeholder="e.g., Imperial College London / Local College",
-            key=f"custom_inst_{v}",
-        )
-        d["institution_name"] = d["custom_institution"]
+    if selected_inst == "Select a University...":
+        d["institution_name"] = ""
     else:
         d["institution_name"] = selected_inst
+
+    if d["institution_name"] == "Others":
+        d["custom_inst_name"] = st.text_input(
+            "Specify Institution Name *",
+            value=d.get("custom_inst_name", ""),
+            key=f"custom_inst_{v}",
+            placeholder="Type your university name here...",
+        )
 
     uploaded_logo = st.file_uploader(
         "Upload Institution Logo (Optional)",
@@ -767,12 +812,12 @@ if st.session_state.step == "form":
         for i in range(int(d["num_students"])):
             col1, col2 = st.columns(2)
             d[f"sname_{i}"] = col1.text_input(
-                f"Student {i + 1} Name",
+                f"Student {i+1} Name",
                 value=d.get(f"sname_{i}", ""),
                 key=f"sname_{i}_{v}",
             )
             d[f"sreg_{i}"] = col2.text_input(
-                f"Student {i + 1} Reg No",
+                f"Student {i+1} Reg No",
                 value=d.get(f"sreg_{i}", ""),
                 key=f"sreg_{i}_{v}",
             )
@@ -847,7 +892,8 @@ if st.session_state.step == "form":
     with action_col1:
         if st.button("Generate & Preview", type="primary", use_container_width=True):
             missing_fields = []
-            if not d.get("institution_name", "").strip():
+            final_inst = get_final_institution_name(d)
+            if not final_inst:
                 missing_fields.append("Institution Name")
             if not d.get("exp_no", "").strip():
                 missing_fields.append(exp_field_label)
