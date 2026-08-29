@@ -7,8 +7,10 @@ from docx.shared import Inches, Pt
 import pypdfium2 as pdfium
 from PIL import Image
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 import streamlit as st
 
 # Configure Streamlit page layout
@@ -181,7 +183,7 @@ DEFAULT_DATA = {
     "teacher_name": "",
     "designation": "Assistant Professor",
     "custom_designation": "",
-    "department": "Computer Science and Engineering",
+    "department": "Electrical and Electronic Engineering",
     "custom_dept": "",
     "sub_date": "",
     "logo_bytes": None,
@@ -238,13 +240,17 @@ def show_missing_fields_warning(missing_fields):
 
 
 # -----------------------------------------------------------------------------
-# 3. PDF GENERATION LOGIC
+# 3. PDF GENERATION LOGIC (WITH AUTOMATIC MULTI-LINE TITLE WRAPPING)
 # -----------------------------------------------------------------------------
 def generate_pdf():
     data = st.session_state.form_data
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+
+    # Margin & printable bounds definitions
+    margin = 50
+    printable_width = width - (2 * margin)
 
     # --- 1. Document Type Header ---
     doc_type_text = data.get("doc_type_choice", "Lab Report")
@@ -258,7 +264,7 @@ def generate_pdf():
     # --- 2. Top Horizontal Line ---
     current_y -= 25
     c.setLineWidth(1)
-    c.line(50, current_y, width - 50, current_y)
+    c.line(margin, current_y, width - margin, current_y)
 
     # --- 3. Exp / Assignment / Project Number & Title ---
     exp_num = data.get("exp_no", "").strip()
@@ -278,14 +284,27 @@ def generate_pdf():
 
         c.drawCentredString(width / 2, current_y, label_str)
 
-    if data.get("title"):
-        current_y -= 25
-        c.setFont("Times-Bold", 16)
-        c.drawCentredString(width / 2, current_y, data["title"])
+    # --- MULTI-LINE WRAPPED TITLE IMPLEMENTATION ---
+    title_text = data.get("title", "").strip()
+    if title_text:
+        title_style = ParagraphStyle(
+            name="TitleStyle",
+            fontName="Times-Bold",
+            fontSize=16,
+            leading=20,
+            alignment=1,  # Center Alignment
+        )
+        p_title = Paragraph(title_text, title_style)
+        w, h = p_title.wrap(printable_width, height)
+
+        current_y -= (h + 15)
+        p_title.drawOn(c, margin, current_y)
+        current_y -= 10
+    else:
+        current_y -= 15
 
     # --- 4. Bottom Horizontal Line ---
-    current_y -= 15
-    c.line(50, current_y, width - 50, current_y)
+    c.line(margin, current_y, width - margin, current_y)
 
     # --- 5. Optional Logo ---
     logo_img = prepare_image(data.get("logo_bytes"))
@@ -758,10 +777,11 @@ if st.session_state.step == "form":
         value=d.get("exp_no", ""),
         key=f"exp_no_{v}",
     )
-    d["title"] = st.text_input(
+    d["title"] = st.text_area(
         "Title",
         value=d.get("title", ""),
         key=f"title_{v}",
+        help="Long titles will automatically wrap into multiple centered lines on the PDF output.",
     )
     d["course_title"] = st.text_input(
         "Course Title",
@@ -812,12 +832,12 @@ if st.session_state.step == "form":
         for i in range(int(d["num_students"])):
             col1, col2 = st.columns(2)
             d[f"sname_{i}"] = col1.text_input(
-                f"Student {i+1} Name",
+                f"Student {i + 1} Name",
                 value=d.get(f"sname_{i}", ""),
                 key=f"sname_{i}_{v}",
             )
             d[f"sreg_{i}"] = col2.text_input(
-                f"Student {i+1} Reg No",
+                f"Student {i + 1} Reg No",
                 value=d.get(f"sreg_{i}", ""),
                 key=f"sreg_{i}_{v}",
             )
@@ -855,7 +875,7 @@ if st.session_state.step == "form":
     else:
         d["designation"] = selected_desig
 
-    curr_dept = d.get("department", "Computer Science and Engineering")
+    curr_dept = d.get("department", "Electrical and Electronic Engineering")
     dept_idx = (
         COMMON_DEPARTMENTS.index(curr_dept)
         if curr_dept in COMMON_DEPARTMENTS
