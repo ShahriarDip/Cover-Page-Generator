@@ -7,8 +7,10 @@ from docx.shared import Inches, Pt
 import pypdfium2 as pdfium
 from PIL import Image
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 import streamlit as st
 
 # Configure Streamlit page layout
@@ -177,7 +179,7 @@ def generate_pdf():
     c.setLineWidth(1)
     c.line(50, current_y, width - 50, current_y)
 
-    # --- 3. Exp / Assignment / Project / Proposal Number & Title ---
+    # --- 3. Exp / Assignment / Project / Proposal Number ---
     exp_num = data.get("exp_no", "").strip()
     if exp_num:
         current_y -= 25
@@ -195,10 +197,28 @@ def generate_pdf():
 
         c.drawCentredString(width / 2, current_y, label_str)
 
-    if data.get("title"):
-        current_y -= 25
-        c.setFont("Times-Bold", 16)
-        c.drawCentredString(width / 2, current_y, data["title"])
+    # --- Title Section (Multi-line Support) ---
+    margin = 50
+    printable_width = width - (2 * margin)
+    title_text = data.get("title", "").strip()
+
+    if title_text:
+        title_style = ParagraphStyle(
+            name="CoverTitleStyle",
+            fontName="Times-Bold",
+            fontSize=16,
+            leading=20,
+            alignment=1,  # Center Alignment
+        )
+
+        p_title = Paragraph(title_text, title_style)
+        w_title, h_title = p_title.wrap(printable_width, height)
+
+        current_y -= (h_title + 15)
+        p_title.drawOn(c, margin, current_y)
+        current_y -= 10
+    else:
+        current_y -= 15
 
     # --- 4. Bottom Horizontal Line ---
     current_y -= 15
@@ -338,7 +358,6 @@ def generate_docx():
     data = st.session_state.form_data
     doc = Document()
 
-    # Set page margins to 1 inch
     for section in doc.sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
@@ -358,14 +377,12 @@ def generate_docx():
             run.font.size = Pt(size)
         return p
 
-    # --- 1. Document Type Header ---
     doc_type_text = data.get("doc_type_choice", "Lab Report")
     if doc_type_text == "Others":
         doc_type_text = data.get("custom_doc_type", "Cover Page")
 
     add_centered_p(doc_type_text.upper(), bold=True, size=22, space_after=12)
 
-    # --- 2. Exp / Assignment / Proposal Number & Title ---
     exp_num = data.get("exp_no", "").strip()
     if exp_num:
         if doc_type_text == "Lab Report":
@@ -384,7 +401,6 @@ def generate_docx():
     if data.get("title"):
         add_centered_p(data["title"], bold=True, size=16, space_after=18)
 
-    # --- 3. Logo ---
     eee_path = (
         "logo_eee.png"
         if os.path.exists("logo_eee.png")
@@ -397,7 +413,6 @@ def generate_docx():
         p_img.paragraph_format.space_after = Pt(18)
         p_img.add_run().add_picture(eee_path, width=Inches(1.2))
 
-    # --- 4. Department Name & Course Info ---
     add_centered_p(
         "Department of Electrical and Electronic Engineering",
         bold=True,
@@ -411,7 +426,6 @@ def generate_docx():
     if data.get("course_code"):
         add_centered_p(f"Course Code: {data['course_code']}", size=13, space_after=24)
 
-    # --- 5. Submitted By Section ---
     add_centered_p("Submitted By:", bold=True, size=13, space_after=6, underline=True)
 
     if data.get("work_type") == "Individual":
@@ -430,7 +444,6 @@ def generate_docx():
         if data.get("group_no"):
             add_centered_p(f"Group No : {data['group_no']}", size=12, space_after=20)
 
-    # --- 6. Submitted To Section ---
     add_centered_p("Submitted To:", bold=True, size=13, space_after=6, underline=True)
 
     if data.get("teacher_name"):
@@ -438,7 +451,6 @@ def generate_docx():
     if data.get("designation"):
         add_centered_p(data["designation"], size=12, space_after=4)
 
-    # Resolve Department
     if data.get("is_external_teacher"):
         dept_val = data.get("department", "Electrical and Electronic Engineering")
         if dept_val == "Others":
@@ -454,7 +466,6 @@ def generate_docx():
         space_after=30,
     )
 
-    # --- 7. Date of Submission ---
     sub_date = data.get("sub_date", "").strip()
     date_text = (
         f"Date of Submission: {sub_date}"
@@ -475,7 +486,6 @@ def generate_docx():
 def generate_tex():
     data = st.session_state.form_data
 
-    # Resolve document type
     doc_type = data.get("doc_type_choice", "Lab Report")
     if doc_type == "Others":
         doc_type = data.get("custom_doc_type", "Cover Page")
@@ -495,7 +505,6 @@ def generate_tex():
     else:
         num_str = ""
 
-    # Build student block
     student_block = ""
     if data.get("work_type") == "Individual":
         if data.get("student_name"):
@@ -512,7 +521,6 @@ def generate_tex():
         if data.get("group_no"):
             student_block += f"Group No : {data['group_no']}\\\\\n"
 
-    # Build teacher department string
     if data.get("is_external_teacher"):
         dept_val = data.get("department", "Electrical and Electronic Engineering")
         if dept_val == "Others":
@@ -532,7 +540,6 @@ def generate_tex():
         else "Date of Submission: \\dots\\dots\\dots\\dots\\dots\\dots\\dots\\dots"
     )
 
-    # Template
     tex_code = f"""\\documentclass[12pt,a4paper]{{article}}
 \\usepackage[margin=1in]{{geometry}}
 \\usepackage{{graphicx}}
@@ -583,12 +590,8 @@ Shahjalal University of Science and Technology, Sylhet \\\\[3em]
 
 def generate_tex_zip(tex_code):
     zip_buffer = io.BytesIO()
-
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        # Add the generated .tex file
         zip_file.writestr("Cover_Page.tex", tex_code)
-
-        # Include the EEE logo if available
         eee_path = (
             "logo_eee.png"
             if os.path.exists("logo_eee.png")
@@ -596,7 +599,6 @@ def generate_tex_zip(tex_code):
         )
         if os.path.exists(eee_path):
             zip_file.write(eee_path, arcname="logo_eee.png")
-
     zip_buffer.seek(0)
     return zip_buffer
 
@@ -628,7 +630,6 @@ if st.session_state.step == "form":
     v = st.session_state.form_version
     d = st.session_state.form_data
 
-    # 1. Select Cover Page Type
     current_choice = d.get("doc_type_choice", "Lab Report")
     idx_doc = doc_options.index(current_choice) if current_choice in doc_options else 0
 
@@ -648,7 +649,6 @@ if st.session_state.step == "form":
 
     st.subheader("Cover Page Details")
 
-    # 2. Number / ID, Title, Course Name, Course Code
     exp_field_label = "Experiment No (e.g., 02)"
     if d["doc_type_choice"] == "Assignment":
         exp_field_label = "Assignment No (e.g., 01)"
@@ -664,10 +664,11 @@ if st.session_state.step == "form":
         value=d.get("exp_no", ""),
         key=f"exp_no_{v}",
     )
-    d["title"] = st.text_input(
+    d["title"] = st.text_area(
         "Title",
         value=d.get("title", ""),
         key=f"title_{v}",
+        help="Long titles will automatically wrap into multiple centered lines on the PDF output.",
     )
     d["course_title"] = st.text_input(
         "Course Title",
@@ -680,7 +681,6 @@ if st.session_state.step == "form":
         key=f"course_code_{v}",
     )
 
-    # 3. Individual or Group Option
     st.subheader("Student Details")
     d["work_type"] = st.radio(
         "Select Submission Type",
@@ -690,7 +690,6 @@ if st.session_state.step == "form":
         key=f"work_type_{v}",
     )
 
-    # 4. Student Information
     if d["work_type"] == "Individual":
         d["student_name"] = st.text_input(
             "Student Name",
@@ -729,7 +728,6 @@ if st.session_state.step == "form":
                 key=f"sreg_{i}_{v}",
             )
 
-    # 5. Teacher Details Section
     st.subheader("Teacher Details")
 
     col_t1, col_t2 = st.columns([2, 1])
